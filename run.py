@@ -1,11 +1,12 @@
-
+import torch
 import argparse
 import os, errno
 import sys
 import yaml
 
 from program import Program
-from data.data_loader import Load_Loader
+from data.data_loader import Load_Loader, split_loader
+from utils import accuracy
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
@@ -23,7 +24,7 @@ def parse_arguments():
         "--mode",
         type=str,
         help="Set mode to Train/Test",
-        default='Train'
+        default='Test'
     )
     parser.add_argument(
         "-d",
@@ -69,7 +70,10 @@ def main():
             conf = yaml.load(f,Loader=yaml.FullLoader)
             
     dataloader, num_target = Load_Loader(conf)
+    test_len = 20000 // conf["Program"]["batch_size"]
+    train_loader, valid_loader = split_loader(dataloader, conf["Program"]["batch_size"])
     program = Program(conf, args)
+    acc = accuracy.Acc()
     if(args.choose_model=="CRNN"):
         from models.crnn.model import Model
         model = Model(conf, num_target+2)
@@ -80,7 +84,7 @@ def main():
         raise("You write wrong model name!")
     
     if args.mode=='Train':
-        program.train(model, dataloader, args.name,args.delete)
+        program.train(model, dataloader, train_loader, valid_loader, args.name,args.delete, acc)
     else:
         if not os.path.isdir(args.folder):
             raise FileNotFoundError(f'No such Test data set {args.folder}')

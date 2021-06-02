@@ -41,16 +41,9 @@ class AttentionRecognitionHead(nn.Module):
             outputs.append(output)
             #else:
             #    outputs = torch.cat
-            outputs = torch.cat([_.unsqueeze(1) for _ in outputs], 1)
-            print(outputs.shape)
-            #print("###################### output #################")
-            #print(output.shape)
-            #print(outputs.shape)
+            #outputs = torch.cat([_.unsqueeze(1) for _ in outputs], 1)
             #outputs = outputs.cpu().detach().numpy().tolist()
-            #print("##################### detach() #######################")
-            #print(len(outputs))
-            #for i in outputs:
-            #    print(type(i))
+        outputs = torch.cat([_.unsqueeze(1) for _ in outputs], 1)
         return outputs
 
     # inference stage.

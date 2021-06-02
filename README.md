@@ -22,4 +22,4 @@ python run.py -pt [bool] \
 - ```-n``` (required): result folder
 - ```-cm``` (required): recognition model(default : CRNN, list:(CRNN, ASTER))
 
-```python run.py -pt True -m Train -n test_1 -cm CRNN```
+```python run.py -pt True -m Train -n test_1 -d True -cm CRNN```

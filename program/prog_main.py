@@ -26,7 +26,7 @@ class Program(object):
         self.saved_model = conf['saved_model']
         
         
-    def train(self, model, dataloader, name, delete):
+    def train(self, model, dataloader, train_loader, valid_loader, name, delete, acc):
         if not os.path.exists(os.path.join(self.save_path, name)):
             os.makedirs(os.path.join(self.save_path, name))
         else:
@@ -38,12 +38,13 @@ class Program(object):
         
         classes = model.classes
         model = torch.nn.DataParallel(model).to(device)
-        model.train()
         
         criterion = torch.nn.CrossEntropyLoss(ignore_index=0).to(device)
-        loss_avg = Averager()
-        calc = ScoreCalc()
-        
+        t_loss_avg = Averager()
+        v_loss_avg = Averager()
+        t_calc = ScoreCalc()
+        v_calc = ScoreCalc()        
+
         filtered_parameters = []
         params_num = []
         for p in filter(lambda p: p.requires_grad, model.parameters()):
@@ -59,7 +60,8 @@ class Program(object):
         
         
         for epoch in range(self.epochs):
-            with tqdm(dataloader, unit="batch") as tepoch:
+            model.train()
+            with tqdm(train_loader, unit="batch") as tepoch:
                 for batch, batch_sampler in enumerate(tepoch):
                     tepoch.set_description(f"Epoch {epoch+1} / Batch {batch+1}")
 
@@ -75,48 +77,74 @@ class Program(object):
                     except:
                         print('catched')
                         continue
-                    '''
                     
-                    if(self.args.choose_model=="ASTER"):
-                        preds  = model(img, text[:, :-1], max(length).cpu().numpy())
-                    else:
-                        preds  = model(img, text[:, :-1], max(length).cpu().numpy())
-                    '''
                     target = text[:, 1:]
-                    cost = criterion(preds.contiguous().view(-1, preds.shape[-1]), target.contiguous().view(-1))
+                    t_cost = criterion(preds.contiguous().view(-1, preds.shape[-1]), target.contiguous().view(-1))
 
                     model.zero_grad()
-                    cost.backward()
+                    t_cost.backward()
 
                     torch.nn.utils.clip_grad_norm_(model.parameters(),5)  # gradient clipping with 5 (Default)
                     
                     optimizer.step()
                     scheduler.step()
 
-                    loss_avg.add(cost)
+                    t_loss_avg.add(t_cost)
                     self.batch_size = len(text)
                     pred_max = torch.argmax(F.softmax(preds,dim=2).view(self.batch_size,-1,classes),2)
 
-                    calc.add(target,F.softmax(preds,dim=2).view(self.batch_size,-1,classes),length)
+                    t_calc.add(target,F.softmax(preds,dim=2).view(self.batch_size,-1,classes),length)
                     #print(dataloader.dataset.converter.decode(target,length),dataloader.dataset.converter.decode(pred_max,length))
                         
-                    tepoch.set_postfix(loss=loss_avg.val().item(),acc=calc.val().item())
+                    tepoch.set_postfix(loss=t_loss_avg.val().item(),acc=t_calc.val().item())
 
-                    del batch_sampler,cost,pred_max,img,text,length
+                    del batch_sampler,t_cost,pred_max,img,text,length
 
-                    if batch%(50*(20//self.batch_size))==0:
+                    if batch%(5)==0:
                         log = dict()
                         log['epoch'] = epoch+1
                         log['batch'] = batch+1
-                        log['loss'] = loss_avg.val().item()
-                        log['acc'] = calc.val().item()
+                        log['loss'] = t_loss_avg.val().item()
+                        log['acc'] = t_calc.val().item()
 
                         with open(os.path.join(save_folder,f'{name}.log'),'a') as f:
                             json.dump(log, f, indent=2)
 
-                        best_loss = loss_avg.val().item()
+                        best_loss = t_loss_avg.val().item()
                         torch.save(model.state_dict(), os.path.join(save_folder,f'{name}.pth'))
 
+            model.eval()
+            with tqdm(valid_loader, unit="batch") as vepoch:
+                for batch, batch_sampler in enumerate(vepoch):
+                    vepoch.set_description(f"Epoch {epoch+1} / Batch {batch+1}")
+                    with torch.no_grad():
+                        img = batch_sampler[0]
+                        text = batch_sampler[1][0]
+                        length = batch_sampler[1][1]
+
+                        try:
+                            if(self.args.choose_model=="ASTER"):
+                                preds  = model(img, text[:, :-1], max(length).cpu().numpy())
+                            else:
+                                preds  = model(img, text[:, :-1], max(length).cpu().numpy())
+                        except:
+                            print('catched')
+                            continue
+
+                        target = text[:, 1:]
+                        v_cost = criterion(preds.contiguous().view(-1, preds.shape[-1]), target.contiguous().view(-1))
+
+                        torch.nn.utils.clip_grad_norm_(model.parameters(),5)  # gradient clipping with 5 (Default)
+
+                        v_loss_avg.add(v_cost)
+                        self.batch_size = len(text)
+                        pred_max = torch.argmax(F.softmax(preds,dim=2).view(self.batch_size,-1,classes),2)
+
+                        v_calc.add(target,F.softmax(preds,dim=2).view(self.batch_size,-1,classes),length)
+                            
+                        vepoch.set_postfix(loss=v_loss_avg.val().item(),acc=v_calc.val().item())
+                        del batch_sampler,v_cost,pred_max,img,text,length
+            
     def test(self, model, target_path, dataloader):
         if not os.path.exists(self.saved_model):
             raise FileNotFoundError(f'No such files {self.saved_model}')
@@ -145,8 +173,3 @@ class Program(object):
                         break
                 print(pred_max)
                 print(dataloader.converter.decode(pred_max,length))
-        
-        
-        
-        
-        

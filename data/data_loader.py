@@ -14,9 +14,15 @@ def Load_Loader(conf):
     dataset = ImgDataSet(conf['Basic'])
     num_target = dataset.num_target
     
-    return DataLoader(dataset, batch_size=conf['Program']['batch_size'],shuffle=True, collate_fn=dataset.img_collator), num_target
+    return DataLoader(dataset, batch_size=conf['Program']['batch_size'], shuffle=True, collate_fn=dataset.img_collator), num_target
     
-    
+def split_loader(dataloader, batch_size):
+    test_len = 20000
+    d_collate = dataloader.dataset.img_collator
+    train_loader, valid_loader = torch.utils.data.random_split(dataloader.dataset, [len(dataloader.dataset)-test_len, test_len])
+    train_loader, valid_loader = DataLoader(train_loader, batch_size = batch_size, shuffle=True, collate_fn = d_collate), DataLoader(valid_loader, batch_size = batch_size, shuffle=True, collate_fn = d_collate)
+    return train_loader, valid_loader
+
 class ImgDataSet(Dataset):
     def __init__(self,conf):
         if conf['phoneme_type']:
