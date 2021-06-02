@@ -6,7 +6,6 @@ import yaml
 
 from program import Program
 from data.data_loader import Load_Loader, split_loader
-from utils import accuracy
 
 def parse_arguments():
     parser = argparse.ArgumentParser(
@@ -73,7 +72,7 @@ def main():
     test_len = 20000 // conf["Program"]["batch_size"]
     train_loader, valid_loader = split_loader(dataloader, conf["Program"]["batch_size"])
     program = Program(conf, args)
-    acc = accuracy.Acc()
+    
     if(args.choose_model=="CRNN"):
         from models.crnn.model import Model
         model = Model(conf, num_target+2)
@@ -84,7 +83,7 @@ def main():
         raise("You write wrong model name!")
     
     if args.mode=='Train':
-        program.train(model, dataloader, train_loader, valid_loader, args.name,args.delete, acc)
+        program.train(model, dataloader, train_loader, valid_loader)
     else:
         if not os.path.isdir(args.folder):
             raise FileNotFoundError(f'No such Test data set {args.folder}')

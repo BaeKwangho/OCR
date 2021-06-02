@@ -3,7 +3,6 @@ import torch.nn as nn
 import torch.nn.functional as F
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-
 class Attention(nn.Module):
 
     def __init__(self, input_size, hidden_size, num_classes):

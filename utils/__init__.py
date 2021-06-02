@@ -1,2 +1,2 @@
-from utils.converter import AttnLabelConverter, Averager
-from utils.score_calc import ScoreCalc
+from utils.converter import AttnLabelConverter
+from utils.score_calc import ScoreCalc, Averager

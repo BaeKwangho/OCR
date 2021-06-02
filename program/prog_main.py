@@ -26,24 +26,20 @@ class Program(object):
         self.saved_model = conf['saved_model']
         
         
-    def train(self, model, dataloader, train_loader, valid_loader, name, delete, acc):
-        if not os.path.exists(os.path.join(self.save_path, name)):
-            os.makedirs(os.path.join(self.save_path, name))
+    def train(self, model, dataloader, train_loader, valid_loader):
+        if not os.path.exists(os.path.join(self.save_path, self.args.name)):
+            os.makedirs(os.path.join(self.save_path, self.args.name))
         else:
-            if not delete:
-                raise SyntaxError(f'{os.path.join(self.save_path, name)} is exist.')
+            if not self.args.delete:
+                raise SyntaxError(f'{os.path.join(self.save_path, self.args.name)} is exist.')
         
         ##
-        save_folder = os.path.join(self.save_path, name)
+        save_folder = os.path.join(self.save_path, self.args.name)
         
         classes = model.classes
         model = torch.nn.DataParallel(model).to(device)
         
         criterion = torch.nn.CrossEntropyLoss(ignore_index=0).to(device)
-        t_loss_avg = Averager()
-        v_loss_avg = Averager()
-        t_calc = ScoreCalc()
-        v_calc = ScoreCalc()        
 
         filtered_parameters = []
         params_num = []
@@ -60,6 +56,10 @@ class Program(object):
         
         
         for epoch in range(self.epochs):
+            t_loss_avg = Averager()
+            v_loss_avg = Averager()
+            t_calc = ScoreCalc()
+            v_calc = ScoreCalc()        
             model.train()
             with tqdm(train_loader, unit="batch") as tepoch:
                 for batch, batch_sampler in enumerate(tepoch):
@@ -95,23 +95,30 @@ class Program(object):
 
                     t_calc.add(target,F.softmax(preds,dim=2).view(self.batch_size,-1,classes),length)
                     #print(dataloader.dataset.converter.decode(target,length),dataloader.dataset.converter.decode(pred_max,length))
-                        
-                    tepoch.set_postfix(loss=t_loss_avg.val().item(),acc=t_calc.val().item())
-
-                    del batch_sampler,t_cost,pred_max,img,text,length
-
-                    if batch%(5)==0:
+                    
+                    if batch%(300)==0:
                         log = dict()
                         log['epoch'] = epoch+1
                         log['batch'] = batch+1
                         log['loss'] = t_loss_avg.val().item()
                         log['acc'] = t_calc.val().item()
 
-                        with open(os.path.join(save_folder,f'{name}.log'),'a') as f:
+                        with open(os.path.join(save_folder,f'{self.args.name}.log'),'a') as f:
                             json.dump(log, f, indent=2)
 
                         best_loss = t_loss_avg.val().item()
-                        torch.save(model.state_dict(), os.path.join(save_folder,f'{name}.pth'))
+                        
+                        word_target = dataloader.dataset.converter.decode(target,length)
+                        word_preds = dataloader.dataset.converter.decode(pred_max,length)
+                        
+                        tepoch.set_postfix(loss=t_loss_avg.val().item(),acc=t_calc.val().item(),\
+                                          preds=word_preds,target=word_target)
+                        torch.save(model.state_dict(), os.path.join(save_folder,f'{self.args.name}.pth'))
+                    else:
+                        tepoch.set_postfix(loss=t_loss_avg.val().item(),acc=t_calc.val().item())
+                        
+                    
+                    del batch_sampler,t_cost,pred_max,img,text,length
 
             model.eval()
             with tqdm(valid_loader, unit="batch") as vepoch:

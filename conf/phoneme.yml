@@ -12,9 +12,9 @@ Model:
     use_tp: True
     
 Program:
-    batch_size: 2
+    batch_size: 40
     epochs: 500
-    learning_rate: 0.0003
+    learning_rate: 0.003
     save_path: ./result/
     saved_model: ./result/char/model_para:False_0.0003.pth
 
