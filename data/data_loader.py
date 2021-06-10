@@ -3,7 +3,6 @@ import numpy as np
 import torch
 import os
 import random
-from trdg.generators import GeneratorFromStrings
 from torch.utils.data import Dataset, DataLoader
 from jamo import h2j, j2hcj
 import time
