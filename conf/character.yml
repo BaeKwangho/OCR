@@ -1,6 +1,6 @@
 Basic:
     phoneme_type: False
-    use_gpu : False
+    use_gpu : True
     #only available when character mode triggered
     char_path: ./asset/dict/ko.json
     train_img_path: ./train_data/Datasets/Train/

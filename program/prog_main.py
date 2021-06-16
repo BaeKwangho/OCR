@@ -8,13 +8,14 @@ import os
 import PIL.Image as Image
 import json
 from time import time
+import unicodedata
 
 class Program(object):
     def __init__(self, conf, args):
         if not conf['Basic']['use_gpu']:
             self.device = torch.device('cpu')
         else:
-            self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         conf = conf['Program']
         self.lr = conf['learning_rate']
@@ -156,7 +157,7 @@ class Program(object):
             raise FileNotFoundError(f'No such folders {save_folder}')
         
         classes = model.classes
-        #model = torch.nn.DataParallel(model).to(self.device)
+        model = torch.nn.DataParallel(model).to(self.device)
         model.load_state_dict(torch.load(os.path.join(save_folder,self.args.name+'.pth'), map_location=self.device))
         
         loss_avg = Averager()
@@ -176,7 +177,7 @@ class Program(object):
                     text = batch_sampler[1][0].to(self.device)
                     length = batch_sampler[1][1].to(self.device)
 
-                    preds  = model(img, text[:, :-1], max(length).cpu().numpy())
+                    preds = model(img, text[:, :-1], max(length).cpu().numpy())
                     target = text[:, 1:]
                     v_cost = criterion(preds.contiguous().view(-1, preds.shape[-1]), target.contiguous().view(-1))
 
@@ -187,17 +188,18 @@ class Program(object):
 
                     calc.add(target,F.softmax(preds,dim=2).view(batch_size,-1,classes),length)
 
-                    vepoch.set_postfix(loss=loss_avg.val().item(),acc=calc.val().item())
-                    
-                    word_target = dataloader.dataset.converter.decode(target,length)[0]
-                    word_preds = dataloader.dataset.converter.decode(pred_max,length)[0]
-                    
+                    word_target = dataloader.dataset.converter.decode(target,length)
+                    word_preds = dataloader.dataset.converter.decode(pred_max,length)
+
                     cer_avg.add(torch.from_numpy(np.array(get_cer(word_preds,word_target))))
-                    
+                    vepoch.set_postfix(loss=loss_avg.val().item(),acc=calc.val().item(),cer=cer_avg.val().item())
+
                     if batch % (len(vepoch)//10)==0:
-                        pred_result.append(dict(target=word_target,pred=word_preds)) 
-                        
-                    del batch_sampler,pred_max,img,text,length,v_cost
+                        pred = unicodedata.normalize('NFC',word_preds[0])
+                        target = unicodedata.normalize('NFC',word_target[0])
+                        pred_result.append(dict(target=target,pred=pred)) 
+
+                    del batch_sampler,v_cost,pred_max,img,text,length
         
         #save_plt(xs,os.path.join(save_folder,name),0,epoch)
         log = dict()
