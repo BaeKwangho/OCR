@@ -1,4 +1,4 @@
-from utils import Averager, ScoreCalc
+from utils import Averager, ScoreCalc, get_cer
 from tqdm import tqdm
 import torch
 import numpy as np
@@ -8,7 +8,6 @@ import os
 import PIL.Image as Image
 import json
 from time import time
-
 
 class Program(object):
     def __init__(self, conf, args):
@@ -162,6 +161,7 @@ class Program(object):
         
         loss_avg = Averager()
         calc = ScoreCalc()
+        cer_avg = Averager()
             
         model.eval()
         pred_num = 10
@@ -187,9 +187,12 @@ class Program(object):
 
                     vepoch.set_postfix(loss=loss_avg.val().item(),acc=calc.val().item())
                     
+                    word_target = dataloader.dataset.converter.decode(target,length)[0]
+                    word_preds = dataloader.dataset.converter.decode(pred_max,length)[0]
+                    
+                    cer_avg.add(get_cer(word_preds,word_target))
+                    
                     if batch % (len(vepoch)//10):
-                        word_target = dataloader.dataset.converter.decode(target,length)[0]
-                        word_preds = dataloader.dataset.converter.decode(pred_max,length)[0]
                         pred_result.append(dict(target=word_target,pred=word_preds)) 
                         
                     del batch_sampler,v_cost,pred_max,img,text,length
@@ -199,7 +202,9 @@ class Program(object):
         log['epoch'] = epoch+1
         log['loss'] = loss_avg.val().item()
         log['acc'] = calc.val().item()
+        log['cer'] = cer_avg.val()
         log['preds'] = pred_result
         
         with open(os.path.join(save_folder,f'{self.args.name}_test.log'),'w') as f:
             json.dump(log, f, indent=2)
+            
