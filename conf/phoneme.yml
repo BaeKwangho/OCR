@@ -6,7 +6,7 @@ Basic:
     train_img_path: ./train_data/Datasets/Train/
     
 Model:
-    hidden_size: 1024
+    hidden_size: 256
     output_size: 512
     input_size: 3
     use_tp: True

@@ -1,10 +1,14 @@
 import torch
-device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 class AttnLabelConverter(object):
     """ Convert between text-label and text-index """
 
-    def __init__(self, character):
+    def __init__(self, character,use_gpu=True):
+        if use_gpu:
+            self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+        else:
+            self.device = torch.device('cpu')
+
         # character (str): set of the possible characters.
         # [GO] for the start token of the attention decoder. [s] for end-of-sentence token.
         list_token = ['[GO]', '[s]']  # ['[s]','[UNK]','[PAD]','[GO]']
@@ -36,7 +40,7 @@ class AttnLabelConverter(object):
             text.append('[s]')
             text = [self.dict[char] for char in text]
             batch_text[i][1:1 + len(text)] = torch.LongTensor(text)  # batch_text[:, 0] = [GO] token
-        return (batch_text.to(device), torch.IntTensor(length).to(device))
+        return (batch_text.to(self.device), torch.IntTensor(length).to(self.device))
 
     def decode(self, text_index, length):
         """ convert text-index into text-label. """

@@ -1,6 +1,26 @@
 import numpy as np
 import torch
+import fastwer
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+def get_cer(pred,target):
+    for i,char in enumerate(pred):
+        if char=='<s>':
+            pred = pred[:i]
+            break
+    for i,char in enumerate(target):
+        if char=='<s>':
+            target = target[:i]
+            break
+            
+    new_text = str()
+    for i in pred:
+        if not '가'<=i<='힣':
+            continue
+        new_text+=i
+    
+    return fastwer.score_sent(target, new_text, char_level=True)
+   
 
 class ScoreCalc(object):
     def __init__(self):
