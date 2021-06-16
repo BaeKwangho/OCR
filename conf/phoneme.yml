@@ -1,6 +1,6 @@
 Basic:
     phoneme_type: True
-    
+    use_gpu : False
     #only available when character mode triggered
     char_path: ./asset/dict/ko.json
     train_img_path: ./train_data/Datasets/Train/
@@ -13,9 +13,8 @@ Model:
     
 Program:
     batch_size: 40
-    epochs: 500
-    learning_rate: 0.003
+    epochs: 100
+    learning_rate: 0.00008
     save_path: ./result/
-    saved_model: ./result/char/model_para:False_0.0003.pth
 
     
