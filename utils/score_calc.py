@@ -1,25 +1,35 @@
 import numpy as np
 import torch
 import fastwer
+import unicodedata
+
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 def get_cer(pred,target):
+    pred = unicodedata.normalize('NFC',pred)
+    target = unicodedata.normalize('NFC',target)
     for i,char in enumerate(pred):
-        if char=='<s>':
+        if char=='[s]':
             pred = pred[:i]
             break
     for i,char in enumerate(target):
-        if char=='<s>':
+        if char=='[s]':
             target = target[:i]
             break
             
-    new_text = str()
+    new_pred = str()
     for i in pred:
         if not '가'<=i<='힣':
             continue
-        new_text+=i
+        new_pred+=i
+        
+    new_tar = str()
+    for i in target:
+        if not '가'<=i<='힣':
+            continue
+        new_tar+=i
     
-    return fastwer.score_sent(target, new_text, char_level=True)
+    return fastwer.score_sent(new_tar, new_pred, char_level=True)
    
 
 class ScoreCalc(object):

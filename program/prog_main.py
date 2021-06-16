@@ -162,7 +162,9 @@ class Program(object):
         loss_avg = Averager()
         calc = ScoreCalc()
         cer_avg = Averager()
-            
+        
+        criterion = torch.nn.CrossEntropyLoss(ignore_index=0).to(self.device)
+
         model.eval()
         pred_num = 10
         pred_result = []
@@ -190,19 +192,18 @@ class Program(object):
                     word_target = dataloader.dataset.converter.decode(target,length)[0]
                     word_preds = dataloader.dataset.converter.decode(pred_max,length)[0]
                     
-                    cer_avg.add(get_cer(word_preds,word_target))
+                    cer_avg.add(torch.from_numpy(np.array(get_cer(word_preds,word_target))))
                     
-                    if batch % (len(vepoch)//10):
+                    if batch % (len(vepoch)//10)==0:
                         pred_result.append(dict(target=word_target,pred=word_preds)) 
                         
-                    del batch_sampler,v_cost,pred_max,img,text,length
+                    del batch_sampler,pred_max,img,text,length,v_cost
         
         #save_plt(xs,os.path.join(save_folder,name),0,epoch)
         log = dict()
-        log['epoch'] = epoch+1
         log['loss'] = loss_avg.val().item()
         log['acc'] = calc.val().item()
-        log['cer'] = cer_avg.val()
+        log['cer'] = cer_avg.val().item()
         log['preds'] = pred_result
         
         with open(os.path.join(save_folder,f'{self.args.name}_test.log'),'w') as f:
