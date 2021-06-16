@@ -7,11 +7,16 @@ import torch.nn.functional as F
 import os
 import PIL.Image as Image
 import json
+from time import time
 
-device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
 
 class Program(object):
     def __init__(self, conf, args):
+        if not conf['Basic']['use_gpu']:
+            self.device = torch.device('cpu')
+        else:
+            self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+
         conf = conf['Program']
         self.lr = conf['learning_rate']
         self.epochs = conf['epochs']
@@ -23,8 +28,6 @@ class Program(object):
             
         self.save_path = conf['save_path']
         
-        self.saved_model = conf['saved_model']
-        
         
     def train(self, model, dataloader, train_loader, valid_loader):
         if not os.path.exists(os.path.join(self.save_path, self.args.name)):
@@ -35,12 +38,11 @@ class Program(object):
         
         save_folder = os.path.join(self.save_path, self.args.name)
         
-        print(device)
         classes = model.classes
-        #model = torch.nn.DataParallel(model).to(device)
-        model.to(device)
+        model = torch.nn.DataParallel(model).to(self.device)
+        model.to(self.device)
         
-        criterion = torch.nn.CrossEntropyLoss(ignore_index=0).to(device)
+        criterion = torch.nn.CrossEntropyLoss(ignore_index=0).to(self.device)
 
         filtered_parameters = []
         params_num = []
@@ -54,19 +56,23 @@ class Program(object):
         scheduler = optim.lr_scheduler.CosineAnnealingLR(optimizer, eta_min=1e-5, T_max=self.epochs)
         
         best_acc = 0
-        
+        taken_time= time()
         for epoch in range(self.epochs):
             t_loss_avg = Averager()
             v_loss_avg = Averager()
             t_calc = ScoreCalc()
             v_calc = ScoreCalc()        
             model.train()
+            
+            word_target = None
+            word_preds = None
+
             with tqdm(train_loader, unit="batch") as tepoch:
                 for batch, batch_sampler in enumerate(tepoch):
                     tepoch.set_description(f"Epoch {epoch+1} / Batch {batch+1}")
 
-                    img = batch_sampler[0]
-                    text = batch_sampler[1][0]
+                    img = batch_sampler[0].to(self.device)
+                    text = batch_sampler[1][0].to(self.device)
                     length = batch_sampler[1][1]
                     
                     if(self.args.choose_model=="ASTER"):
@@ -91,17 +97,24 @@ class Program(object):
 
                     t_calc.add(target,F.softmax(preds,dim=2).view(self.batch_size,-1,classes),length)
                     #print(dataloader.dataset.converter.decode(target,length),dataloader.dataset.converter.decode(pred_max,length))
+                    if batch%(300)==0:
+                        word_target = dataloader.dataset.converter.decode(target,length)[0]
+                        word_preds = dataloader.dataset.converter.decode(pred_max,length)[0]
+                    tepoch.set_postfix(loss=t_loss_avg.val().item(),acc=t_calc.val().item(),\
+                                          preds=word_preds,target=word_target)
                     
+                    del batch_sampler,pred_max,img,text,length
+
             model.eval()
             with tqdm(valid_loader, unit="batch") as vepoch:
                 for batch, batch_sampler in enumerate(vepoch):
                     vepoch.set_description(f"Epoch {epoch+1} / Batch {batch+1}")
                     with torch.no_grad():
-                        img = batch_sampler[0].to(device)
-                        text = batch_sampler[1][0].to(device)
-                        length = batch_sampler[1][1].to(device)
+                        img = batch_sampler[0].to(self.device)
+                        text = batch_sampler[1][0].to(self.device)
+                        length = batch_sampler[1][1].to(self.device)
 
-                        preds,_  = model(img, text[:, :-1], max(length).cpu().numpy())
+                        preds  = model(img, text[:, :-1], max(length).cpu().numpy())
                         target = text[:, 1:]
                         v_cost = criterion(preds.contiguous().view(-1, preds.shape[-1]), target.contiguous().view(-1))
 
@@ -109,16 +122,16 @@ class Program(object):
 
                         v_loss_avg.add(v_cost)
                         batch_size = len(text)
-                        pred_max = torch.argmax(F.softmax(preds,dim=2).view(batch_size,-1,num_target+2),2)
+                        pred_max = torch.argmax(F.softmax(preds,dim=2).view(batch_size,-1,classes),2)
 
-                        v_calc.add(target,F.softmax(preds,dim=2).view(batch_size,-1,num_target+2),length)
+                        v_calc.add(target,F.softmax(preds,dim=2).view(batch_size,-1,classes),length)
 
                         vepoch.set_postfix(loss=v_loss_avg.val().item(),acc=v_calc.val().item())
                         del batch_sampler,v_cost,pred_max,img,text,length
 
-            if not os.path.exists(os.path.join(save_folder,name)):
-                os.makedirs(os.path.join(save_folder,name))
-            save_plt(xs,os.path.join(save_folder,name),0,epoch)
+            if not os.path.exists(os.path.join(save_folder,self.args.name)):
+                os.makedirs(os.path.join(save_folder,self.args.name))
+            #save_plt(xs,os.path.join(save_folder,name),0,epoch)
             log = dict()
             log['epoch'] = epoch+1
             log['t_loss'] = t_loss_avg.val().item()
@@ -127,41 +140,66 @@ class Program(object):
             log['v_loss'] = v_loss_avg.val().item()
             log['v_acc'] = v_calc.val().item()
             log['time'] = time() - taken_time
-            with open(os.path.join(save_folder,f'{name}.log'),'a') as f:
+            with open(os.path.join(save_folder,f'{self.args.name}.log'),'a') as f:
                 json.dump(log, f, indent=2)
 
             best_loss = t_loss_avg.val().item()
             if best_acc < v_calc.val().item():
                 best_acc = v_calc.val().item()
-                torch.save(model.state_dict(), os.path.join(save_folder,f'{name}.pth'))
+                torch.save(model.state_dict(), os.path.join(save_folder,f'{self.args.name}.pth'))
             
             
             
     def test(self, model, target_path, dataloader):
-        if not os.path.exists(self.saved_model):
-            raise FileNotFoundError(f'No such files {self.saved_model}')
-         
-        test_data_list = os.listdir(target_path)
-        for i,target in enumerate(test_data_list):
-            image = np.array(Image.open(os.path.join(target_path,target))).astype(np.float32)
-            image = np.transpose(image,(2,0,1))[np.newaxis,:3,:,:]
-            image = torch.from_numpy(image).to(device)
-            test_data_list[i] = image
-                
-        classes = model.classes
-        model = torch.nn.DataParallel(model).to(device)
-        model.load_state_dict(torch.load(self.saved_model, map_location=device))
+        save_folder = os.path.join(self.save_path, self.args.name)
         
+        if not os.path.exists(save_folder):
+            raise FileNotFoundError(f'No such folders {save_folder}')
+        
+        classes = model.classes
+        #model = torch.nn.DataParallel(model).to(self.device)
+        model.load_state_dict(torch.load(os.path.join(save_folder,self.args.name+'.pth'), map_location=self.device))
+        
+        loss_avg = Averager()
+        calc = ScoreCalc()
+            
         model.eval()
-        with torch.no_grad():
-            for image in test_data_list:
-                preds = model(image,None,is_train=False)
-                pred_max = torch.argmax(F.softmax(preds,dim=2).view(1,-1,classes),2)
-                
-                length = np.zeros((1,1))
-                for i,key in enumerate(torch.squeeze(pred_max)):
-                    if key.item()==69:
-                        length[0][0] = i+1
-                        break
-                print(pred_max)
-                print(dataloader.converter.decode(pred_max,length))
+        pred_num = 10
+        pred_result = []
+        with tqdm(dataloader, unit="batch") as vepoch:
+            for batch, batch_sampler in enumerate(vepoch):
+                vepoch.set_description(f"Test Session / Batch {batch+1}")
+                with torch.no_grad():
+                    img = batch_sampler[0].to(self.device)
+                    text = batch_sampler[1][0].to(self.device)
+                    length = batch_sampler[1][1].to(self.device)
+
+                    preds  = model(img, text[:, :-1], max(length).cpu().numpy())
+                    target = text[:, 1:]
+                    v_cost = criterion(preds.contiguous().view(-1, preds.shape[-1]), target.contiguous().view(-1))
+
+                    torch.nn.utils.clip_grad_norm_(model.parameters(),5)  # gradient clipping with 5 (Default)
+                    loss_avg.add(v_cost)
+                    batch_size = len(text)
+                    pred_max = torch.argmax(F.softmax(preds,dim=2).view(batch_size,-1,classes),2)
+
+                    calc.add(target,F.softmax(preds,dim=2).view(batch_size,-1,classes),length)
+
+                    vepoch.set_postfix(loss=loss_avg.val().item(),acc=calc.val().item())
+                    
+                    if batch % (len(vepoch)//10):
+                        word_target = dataloader.dataset.converter.decode(target,length)[0]
+                        word_preds = dataloader.dataset.converter.decode(pred_max,length)[0]
+                        pred_result.append(dict(target=word_target,pred=word_preds)) 
+                        
+                    del batch_sampler,v_cost,pred_max,img,text,length
+        
+        #save_plt(xs,os.path.join(save_folder,name),0,epoch)
+        log = dict()
+        log['epoch'] = epoch+1
+        log['loss'] = loss_avg.val().item()
+        log['acc'] = calc.val().item()
+        log['preds'] = pred_result
+        
+        with open(os.path.join(save_folder,f'{self.args.name}_test.log'),'w') as f:
+            json.dump(log, f, indent=2)

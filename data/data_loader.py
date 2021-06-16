@@ -33,7 +33,7 @@ class ImgDataSet(Dataset):
         
         self.num_target = num_target
         self.phoneme_type = conf['phoneme_type']
-        self.converter = AttnLabelConverter(self.tar2ind)
+        self.converter = AttnLabelConverter(self.tar2ind,conf['use_gpu'])
         
         path = conf['train_img_path']
         if not os.path.exists(path):
