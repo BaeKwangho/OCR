@@ -8,6 +8,7 @@ import os
 import PIL.Image as Image
 import json
 from time import time
+import unicodedata
 
 class Program(object):
     def __init__(self, conf, args):
@@ -162,7 +163,9 @@ class Program(object):
         loss_avg = Averager()
         calc = ScoreCalc()
         cer_avg = Averager()
-            
+        
+        criterion = torch.nn.CrossEntropyLoss(ignore_index=0).to(self.device)
+
         model.eval()
         pred_num = 10
         pred_result = []
@@ -174,7 +177,7 @@ class Program(object):
                     text = batch_sampler[1][0].to(self.device)
                     length = batch_sampler[1][1].to(self.device)
 
-                    preds  = model(img, text[:, :-1], max(length).cpu().numpy())
+                    preds = model(img, text[:, :-1], max(length).cpu().numpy())
                     target = text[:, 1:]
                     v_cost = criterion(preds.contiguous().view(-1, preds.shape[-1]), target.contiguous().view(-1))
 
@@ -185,24 +188,24 @@ class Program(object):
 
                     calc.add(target,F.softmax(preds,dim=2).view(batch_size,-1,classes),length)
 
-                    vepoch.set_postfix(loss=loss_avg.val().item(),acc=calc.val().item())
-                    
-                    word_target = dataloader.dataset.converter.decode(target,length)[0]
-                    word_preds = dataloader.dataset.converter.decode(pred_max,length)[0]
-                    
-                    cer_avg.add(get_cer(word_preds,word_target))
-                    
-                    if batch % (len(vepoch)//10):
-                        pred_result.append(dict(target=word_target,pred=word_preds)) 
-                        
+                    word_target = dataloader.dataset.converter.decode(target,length)
+                    word_preds = dataloader.dataset.converter.decode(pred_max,length)
+
+                    cer_avg.add(torch.from_numpy(np.array(get_cer(word_preds,word_target))))
+                    vepoch.set_postfix(loss=loss_avg.val().item(),acc=calc.val().item(),cer=cer_avg.val().item())
+
+                    if batch % (len(vepoch)//10)==0:
+                        pred = unicodedata.normalize('NFC',word_preds[0])
+                        target = unicodedata.normalize('NFC',word_target[0])
+                        pred_result.append(dict(target=target,pred=pred)) 
+
                     del batch_sampler,v_cost,pred_max,img,text,length
         
         #save_plt(xs,os.path.join(save_folder,name),0,epoch)
         log = dict()
-        log['epoch'] = epoch+1
         log['loss'] = loss_avg.val().item()
         log['acc'] = calc.val().item()
-        log['cer'] = cer_avg.val()
+        log['cer'] = cer_avg.val().item()
         log['preds'] = pred_result
         
         with open(os.path.join(save_folder,f'{self.args.name}_test.log'),'w') as f:

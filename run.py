@@ -67,6 +67,8 @@ def main():
         with open('./conf/character.yml') as f:
             conf = yaml.load(f,Loader=yaml.FullLoader)
             
+    if not args.mode=='Train':
+        conf['Basic']['train_img_path'] = args.folder
     dataloader, num_target = Load_Loader(conf)
     program = Program(conf, args)
 
