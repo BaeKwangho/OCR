@@ -1,12 +1,12 @@
 Basic:
     phoneme_type: False
-    use_gpu : False
+    use_gpu : True
     #only available when character mode triggered
     char_path: ./asset/dict/ko.json
     train_img_path: ./train_data/Datasets/Train/
     
 Model:
-    hidden_size: 256
+    hidden_size: 1024
     output_size: 512
     input_size: 3
     use_tp: True

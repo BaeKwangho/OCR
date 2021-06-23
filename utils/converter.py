@@ -5,7 +5,7 @@ class AttnLabelConverter(object):
 
     def __init__(self, character,use_gpu=True):
         if use_gpu:
-            self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         else:
             self.device = torch.device('cpu')
 

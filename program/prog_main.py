@@ -14,7 +14,7 @@ class Program(object):
         if not conf['Basic']['use_gpu']:
             self.device = torch.device('cpu')
         else:
-            self.device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+            self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
         conf = conf['Program']
         self.lr = conf['learning_rate']
@@ -156,7 +156,7 @@ class Program(object):
             raise FileNotFoundError(f'No such folders {save_folder}')
         
         classes = model.classes
-        #model = torch.nn.DataParallel(model).to(self.device)
+        model = torch.nn.DataParallel(model).to(self.device)
         model.load_state_dict(torch.load(os.path.join(save_folder,self.args.name+'.pth'), map_location=self.device))
         
         loss_avg = Averager()
